@@ -1,0 +1,50 @@
+ARG TAG="bookworm"
+FROM debian:${TAG}
+LABEL maintainer="serpro69"
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+ENV pip_packages "ansible cryptography"
+
+# Install minimal set of dependencies via apt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       sudo \
+       systemd \
+       systemd-sysv \
+       build-essential \
+       wget \
+       libffi-dev \
+       libssl-dev \
+       procps \
+       python3-pip \
+       python3-dev \
+       python3-setuptools \
+       python3-wheel \
+       python3-apt \
+       iproute2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -Rf /usr/share/doc && rm -Rf /usr/share/man \
+    && apt-get clean
+
+# Upgrade pip
+# Need --break-system-packages due to https://peps.python.org/pep-0668/
+RUN pip3 install --upgrade --break-system-packages pip
+
+# Install dependencies via pip
+# Need --break-system-packages due to https://peps.python.org/pep-0668/
+RUN pip3 install --break-system-packages $pip_packages
+
+# Fake initctl
+COPY src/common/initctl_faker .
+RUN chmod +x initctl_faker && rm -fr /sbin/initctl && ln -s /initctl_faker /sbin/initctl
+
+# Install Ansible inventory file
+RUN mkdir -p /etc/ansible
+RUN echo "[local]\nlocalhost ansible_connection=local" > /etc/ansible/hosts
+
+# Make sure systemd doesn't start agenttys on tty[1-6]
+RUN rm -f /lib/systemd/system/multi-user.target.wants/getty.target
+
+VOLUME ["/sys/fs/cgroup"]
+CMD ["/lib/systemd/systemd"]
